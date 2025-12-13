@@ -22,7 +22,7 @@ const allowedOrigins = [
     'https://real-time-chat-app-xi-mocha.vercel.app',
     'http://localhost:5173',
     'http://localhost:5174',
-    'http://localhost:3000',
+    'https://real-time-chat-app-dkrf.vercel.app',
     'http://127.0.0.1:5173',
     'http://localhost:5000', // Allow self
     process.env.CORS_ORIGIN
@@ -131,4 +131,5 @@ process.on('SIGTERM', () => {
                 process.exit(1);
             });
     });
+
 });
