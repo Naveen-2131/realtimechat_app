@@ -83,32 +83,40 @@ module.exports = (io) => {
             const groupId = message.group?._id || message.group || message.groupId;
             const room = conversationId || groupId;
 
+            console.log(`[SERVER] send_message event. Room: ${room}, Sender: ${socket.userId}`);
+
             if (room) {
                 // 1. Emit to the conversation/group room (standard behavior)
-                // This reaches everyone who has "joined" the chat actively
-                socket.to(room).emit('new_message', message);
+                // Use io.to() instead of socket.to() to ensure everyone gets it, including sender (client handles dedupe)
+                io.to(room).emit('new_message', message);
+                console.log(`[SERVER] Emitted to room ${room}`);
 
                 // 2. ALSO Emit to specific participants (Reliability layer)
-                // This ensures that even if a user hasn't "joined" the room socket-wise 
-                // (e.g. they are online but looking at the dashboard without refreshing), 
+                // This ensures that even if a user hasn't "joined" the room socket-wise
+                // (e.g. they are online but looking at the dashboard without refreshing),
                 // they still get the message.
 
                 if (message.conversation && message.conversation.participants) {
                     message.conversation.participants.forEach(participant => {
                         const pId = participant._id || participant;
-                        // Don't send back to sender via this channel (optional, but good for reducing specific noise)
-                        if (pId.toString() !== socket.userId) {
-                            io.to(pId.toString()).emit('new_message', message);
-                        }
+                        // Ensure we use string for comparison and room name
+                        const pIdStr = pId.toString();
+
+                        console.log(`[SERVER] Checking participant: ${pIdStr} (Socket User: ${socket.userId})`);
+
+                        // Send to everyone via their personal room, including sender (reliability)
+                        // Client deduplication will handle double receives
+                        io.to(pIdStr).emit('new_message', message);
+                        console.log(`[SERVER] Emitted to personal room ${pIdStr}`);
                     });
                 }
 
                 if (message.group && message.group.members) {
                     message.group.members.forEach(member => {
                         const mId = member._id || member;
-                        if (mId.toString() !== socket.userId) {
-                            io.to(mId.toString()).emit('new_message', message);
-                        }
+                        const mIdStr = mId.toString();
+                        io.to(mIdStr).emit('new_message', message);
+                        console.log(`[SERVER] Emitted to personal room ${mIdStr} (Group)`);
                     });
                 }
             } else {
