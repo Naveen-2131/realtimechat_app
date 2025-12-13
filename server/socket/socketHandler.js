@@ -77,50 +77,61 @@ module.exports = (io) => {
         });
 
         // Send message
-        socket.on('send_message', (message) => {
-            // Handle both populated objects and plain IDs
-            const conversationId = message.conversation?._id || message.conversation || message.conversationId;
-            const groupId = message.group?._id || message.group || message.groupId;
-            const room = conversationId || groupId;
+        socket.on('send_message', async (message) => {
+            try {
+                // Handle both populated objects and plain IDs
+                const conversationId = message.conversation?._id || message.conversation || message.conversationId;
+                const groupId = message.group?._id || message.group || message.groupId;
+                const room = conversationId || groupId;
 
-            console.log(`[SERVER] send_message event. Room: ${room}, Sender: ${socket.userId}`);
+                console.log(`[SERVER] send_message event. Room: ${room}, Sender: ${socket.userId}`);
 
-            if (room) {
-                // 1. Emit to the conversation/group room (standard behavior)
-                // Use io.to() instead of socket.to() to ensure everyone gets it, including sender (client handles dedupe)
-                io.to(room).emit('new_message', message);
-                console.log(`[SERVER] Emitted to room ${room}`);
+                if (room) {
+                    // 1. Emit to the conversation/group room (standard behavior)
+                    io.to(room).emit('new_message', message);
+                    console.log(`[SERVER] Emitted to room ${room}`);
 
-                // 2. ALSO Emit to specific participants (Reliability layer)
-                // This ensures that even if a user hasn't "joined" the room socket-wise
-                // (e.g. they are online but looking at the dashboard without refreshing),
-                // they still get the message.
+                    // 2. ALSO Emit to specific participants (Reliability layer)
+                    // CRITICAL FIX: If participants are missing (e.g. not populated), FETCH them.
+                    let participants = [];
 
-                if (message.conversation && message.conversation.participants) {
-                    message.conversation.participants.forEach(participant => {
-                        const pId = participant._id || participant;
-                        // Ensure we use string for comparison and room name
-                        const pIdStr = pId.toString();
+                    if (conversationId) {
+                        if (message.conversation && message.conversation.participants && message.conversation.participants.length > 0) {
+                            participants = message.conversation.participants;
+                        } else {
+                            // Fallback: Fetch from DB
+                            const Conversation = require('../models/Conversation'); // Lazy load
+                            const conv = await Conversation.findById(conversationId);
+                            if (conv) participants = conv.participants;
+                            console.log(`[SERVER] Fetched ${participants.length} participants from DB for reliability`);
+                        }
+                    } else if (groupId) {
+                        if (message.group && message.group.members && message.group.members.length > 0) {
+                            participants = message.group.members;
+                        } else {
+                            // Fallback: Fetch from DB
+                            const Group = require('../models/Group'); // Lazy load
+                            const grp = await Group.findById(groupId);
+                            if (grp) participants = grp.members;
+                            console.log(`[SERVER] Fetched ${participants.length} members from DB for reliability`);
+                        }
+                    }
 
-                        console.log(`[SERVER] Checking participant: ${pIdStr} (Socket User: ${socket.userId})`);
+                    if (participants && participants.length > 0) {
+                        participants.forEach(p => {
+                            const pId = p._id || p;
+                            const pIdStr = pId.toString();
 
-                        // Send to everyone via their personal room, including sender (reliability)
-                        // Client deduplication will handle double receives
-                        io.to(pIdStr).emit('new_message', message);
-                        console.log(`[SERVER] Emitted to personal room ${pIdStr}`);
-                    });
+                            // Send to everyone via their personal room
+                            io.to(pIdStr).emit('new_message', message);
+                        });
+                        console.log(`[SERVER] Reliability broadcast sent to ${participants.length} users`);
+                    }
+                } else {
+                    console.error('No room found for message:', message);
                 }
-
-                if (message.group && message.group.members) {
-                    message.group.members.forEach(member => {
-                        const mId = member._id || member;
-                        const mIdStr = mId.toString();
-                        io.to(mIdStr).emit('new_message', message);
-                        console.log(`[SERVER] Emitted to personal room ${mIdStr} (Group)`);
-                    });
-                }
-            } else {
-                console.error('No room found for message:', message);
+            } catch (err) {
+                console.error('[SERVER] Socket send_message error:', err);
             }
         });
 
