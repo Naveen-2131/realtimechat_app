@@ -6,25 +6,7 @@ module.exports = (io) => {
     io.on('connection', (socket) => {
         console.log('User connected:', socket.id);
 
-        // User joins with their ID
-        socket.on('join', async (userId) => {
-            users.set(userId, socket.id);
-            // Store user info in socket for disconnect handling
-            socket.userId = userId;
 
-            // Update user's lastSeen and status in database
-            try {
-                await User.findByIdAndUpdate(userId, {
-                    status: 'online',
-                    lastSeen: new Date()
-                });
-            } catch (error) {
-                console.error('Error updating user status:', error);
-            }
-
-            io.emit('user_status_change', { userId, status: 'online' });
-            console.log(`User ${userId} is online`);
-        });
 
         // Join a conversation room
         socket.on('join_conversation', (conversationId) => {
