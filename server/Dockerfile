@@ -1,22 +1,17 @@
-# Stage 1: Build
+# Simple Node.js backend build
 FROM node:18-alpine
-
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files (allow optional lockfile)
+COPY package.json package-lock.jso[n] ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Fix: Use npm install instead of npm ci if lockfile is missing
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Copy source code
 COPY . .
 
 # Create uploads directory
 RUN mkdir -p uploads
 
-# Expose port
 EXPOSE 5000
-
-# Start the server
 CMD ["node", "server.js"]
