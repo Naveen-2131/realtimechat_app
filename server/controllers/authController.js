@@ -1,105 +1,195 @@
-const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const User = require('../models/User');
+const Group = require('../models/Group');
+const Message = require('../models/Message');
+const Report = require('../models/Report');
 
-// Generate JWT
-const generateToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '30d',
-    });
+// @desc    Get all users (Admin)
+// @route   GET /api/admin/users
+// @access  Private/Admin
+const getAllUsers = async (req, res) => {
+    try {
+        const pageSize = 10;
+        const page = Number(req.query.pageNumber) || 1;
+
+        const keyword = req.query.keyword
+            ? {
+                $or: [
+                    { username: { $regex: req.query.keyword, $options: 'i' } },
+                    { email: { $regex: req.query.keyword, $options: 'i' } },
+                ],
+            }
+            : {};
+
+        const count = await User.countDocuments({ ...keyword });
+        const users = await User.find({ ...keyword })
+            .select('-password')
+            .limit(pageSize)
+            .skip(pageSize * (page - 1));
+
+        res.json({ users, page, pages: Math.ceil(count / pageSize) });
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
 };
 
-// @desc    Register new user
-// @route   POST /api/auth/register
-// @access  Public
-const registerUser = async (req, res) => {
+// @desc    Activate/Deactivate user
+// @route   PUT /api/admin/users/:id/status
+// @access  Private/Admin
+const updateUserStatus = async (req, res) => {
     try {
-        const { username, email, password } = req.body;
-
-        if (!username || !email || !password) {
-            return res.status(400).json({ message: 'Please add all fields' });
-        }
-
-        // Check if user exists
-        const userExists = await User.findOne({ email });
-
-        if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
-        }
-
-        // Create user
-        const user = await User.create({
-            username,
-            email,
-            password,
-        });
+        const user = await User.findById(req.params.id);
 
         if (user) {
-            res.status(201).json({
-                _id: user.id,
-                username: user.username,
-                email: user.email,
-                token: generateToken(user.id),
-            });
+            user.isActive = req.body.isActive;
+            const updatedUser = await user.save();
+            res.json(updatedUser);
         } else {
-            res.status(400).json({ message: 'Invalid user data' });
+            res.status(404);
+            throw new Error('User not found');
         }
     } catch (error) {
-        console.error('Registration error:', error);
-        res.status(500).json({ message: 'Server error', error: error.message });
+        res.status(400);
+        throw new Error(error.message);
     }
 };
 
-// @desc    Authenticate a user
-// @route   POST /api/auth/login
-// @access  Public
-const loginUser = async (req, res) => {
-    const { email, password } = req.body;
+// @desc    Get all groups (Admin)
+// @route   GET /api/admin/groups
+// @access  Private/Admin
+const getAllGroups = async (req, res) => {
+    try {
+        const groups = await Group.find({})
+            .populate('admin', 'username email')
+            .populate('members', 'username');
+        res.json(groups);
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+};
 
-    // Check for user email
-    const user = await User.findOne({ email });
+// @desc    Delete group (Admin)
+// @route   DELETE /api/admin/groups/:id
+// @access  Private/Admin
+const deleteGroup = async (req, res) => {
+    try {
+        const group = await Group.findById(req.params.id);
 
-    if (user && (await user.comparePassword(password))) {
-        // Update status to online
-        user.status = 'online';
-        await user.save();
+        if (group) {
+            await group.deleteOne();
+            res.json({ message: 'Group removed' });
+        } else {
+            res.status(404);
+            throw new Error('Group not found');
+        }
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+};
 
+// @desc    Get all reports
+// @route   GET /api/admin/reports
+// @access  Private/Admin
+const getAllReports = async (req, res) => {
+    try {
+        const reports = await Report.find({})
+            .populate('reportedBy', 'username')
+            .populate('reportedUser', 'username')
+            .populate('message');
+        res.json(reports);
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+};
+
+// @desc    Update report status
+// @route   PUT /api/admin/reports/:id
+// @access  Private/Admin
+const updateReportStatus = async (req, res) => {
+    try {
+        const report = await Report.findById(req.params.id);
+
+        if (report) {
+            report.status = req.body.status || report.status;
+            report.adminNotes = req.body.adminNotes || report.adminNotes;
+            const updatedReport = await report.save();
+            res.json(updatedReport);
+        } else {
+            res.status(404);
+            throw new Error('Report not found');
+        }
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+};
+
+// @desc    Get analytics
+// @route   GET /api/admin/analytics
+// @access  Private/Admin
+const getAnalytics = async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments({});
+        const activeUsers = await User.countDocuments({ isActive: true });
+        const totalGroups = await Group.countDocuments({});
+        const totalMessages = await Message.countDocuments({});
+
+        // Message volume trends (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const messageTrends = await Message.aggregate([
+            { $match: { createdAt: { $gte: sevenDaysAgo } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]);
+
+        // Simple analytics
         res.json({
-            _id: user.id,
-            username: user.username,
-            email: user.email,
-            profilePicture: user.profilePicture,
-            role: user.role,
-            token: generateToken(user.id),
+            totalUsers,
+            activeUsers,
+            totalGroups,
+            totalMessages,
+            messageTrends
         });
-    } else {
-        res.status(400).json({ message: 'Invalid credentials' });
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
     }
 };
 
-// @desc    Get user data
-// @route   GET /api/auth/me
-// @access  Private
-const getMe = async (req, res) => {
-    res.status(200).json(req.user);
-};
-
-// @desc    Logout user
-// @route   POST /api/auth/logout
-// @access  Private
-const logoutUser = async (req, res) => {
-    const user = await User.findById(req.user.id);
-    if (user) {
-        user.status = 'offline';
-        user.lastSeen = Date.now();
-        await user.save();
+// @desc    Delete a message (Admin Moderation)
+// @route   DELETE /api/admin/messages/:id
+// @access  Private/Admin
+const deleteMessage = async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.id);
+        if (message) {
+            await message.deleteOne();
+            res.json({ message: 'Message deleted by admin' });
+        } else {
+            res.status(404).json({ message: 'Message not found' });
+        }
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
-    res.status(200).json({ message: 'Logged out successfully' });
 };
 
 module.exports = {
-    registerUser,
-    loginUser,
-    getMe,
-    logoutUser,
+    getAllUsers,
+    updateUserStatus,
+    getAllGroups,
+    deleteGroup,
+    getAllReports,
+    updateReportStatus,
+    getAnalytics,
+    deleteMessage
 };
