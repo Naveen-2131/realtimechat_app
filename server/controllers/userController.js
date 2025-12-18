@@ -34,28 +34,11 @@ const updateUserProfile = async (req, res) => {
         user.customStatus = req.body.customStatus || user.customStatus;
         user.bio = req.body.bio !== undefined ? req.body.bio : user.bio;
 
-        // Handle avatar upload - Convert to base64 and store in DB
+        // Handle avatar upload - Use Cloudinary URL
         if (req.file) {
-            console.log('Processing file upload:', req.file.originalname);
-
-            let base64Image;
-            if (req.file.buffer) {
-                // Memory storage
-                base64Image = req.file.buffer.toString('base64');
-            } else if (req.file.path) {
-                // Disk storage fallback
-                const fs = require('fs');
-                const fileBuffer = fs.readFileSync(req.file.path);
-                base64Image = fileBuffer.toString('base64');
-                // Clean up temp file
-                try { fs.unlinkSync(req.file.path); } catch (e) { }
-            }
-
-            if (base64Image) {
-                const mimeType = req.file.mimetype;
-                user.profilePicture = `data:${mimeType};base64,${base64Image}`;
-                console.log('Profile picture converted to base64 and stored in DB');
-            }
+            console.log('Processing avatar upload from Cloudinary:', req.file.path);
+            user.profilePicture = req.file.path;
+            console.log('Profile picture updated to Cloudinary URL');
         }
 
         if (req.body.password) {
