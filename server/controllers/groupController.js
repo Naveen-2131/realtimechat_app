@@ -53,18 +53,19 @@ const createGroup = async (req, res) => {
 // @access  Private
 const fetchGroups = async (req, res) => {
     try {
-        Group.find({ members: { $elemMatch: { $eq: req.user.id } } })
+        const results = await Group.find({ members: { $elemMatch: { $eq: req.user.id } } })
             .populate('members', '-password')
             .populate('admin', '-password')
-            .populate('lastMessage')
-            .sort({ updatedAt: -1 })
-            .then(async (results) => {
-                results = await User.populate(results, {
-                    path: 'lastMessage.sender',
-                    select: 'username profilePicture email',
-                });
-                res.status(200).send(results);
-            });
+            .populate({
+                path: 'lastMessage',
+                populate: {
+                    path: 'sender',
+                    select: 'username profilePicture email'
+                }
+            })
+            .sort({ updatedAt: -1 });
+
+        res.status(200).send(results);
     } catch (error) {
         res.status(400);
         throw new Error(error.message);
