@@ -51,17 +51,18 @@ const accessConversation = async (req, res) => {
 // @access  Private
 const fetchConversations = async (req, res) => {
     try {
-        Conversation.find({ participants: { $elemMatch: { $eq: req.user.id } } })
+        const results = await Conversation.find({ participants: { $elemMatch: { $eq: req.user.id } } })
             .populate('participants', 'username email profilePicture bio customStatus lastSeen status')
-            .populate('lastMessage')
-            .sort({ updatedAt: -1 })
-            .then(async (results) => {
-                results = await User.populate(results, {
-                    path: 'lastMessage.sender',
-                    select: 'username profilePicture email lastSeen status',
-                });
-                res.status(200).send(results);
-            });
+            .populate({
+                path: 'lastMessage',
+                populate: {
+                    path: 'sender',
+                    select: 'username profilePicture email lastSeen status'
+                }
+            })
+            .sort({ updatedAt: -1 });
+
+        res.status(200).send(results);
     } catch (error) {
         res.status(400);
         throw new Error(error.message);
