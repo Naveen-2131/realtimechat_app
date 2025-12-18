@@ -16,8 +16,17 @@ const protect = async (req, res, next) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
             // Get user from the token
-            req.user = await User.findById(decoded.id).select('-password');
+            const user = await User.findById(decoded.id).select('-password');
 
+            if (!user) {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
+            }
+
+            if (!user.isActive) {
+                return res.status(403).json({ message: 'Your account has been deactivated. Please contact support.' });
+            }
+
+            req.user = user;
             next();
         } catch (error) {
             console.error(error);
