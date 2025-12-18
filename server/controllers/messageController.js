@@ -23,18 +23,15 @@ const sendMessage = async (req, res) => {
         let fileData = {};
 
         if (req.file) {
-            console.log('Processing file:', req.file.originalname);
-            console.log('File path:', req.file.path);
-
-            const fileUrl = `/uploads/${req.file.filename}`;
+            console.log('Processing file from Cloudinary:', req.file.path);
 
             fileData = {
-                fileUrl: fileUrl,
+                fileUrl: req.file.path, // req.file.path is the secure_url from Cloudinary
                 fileType: req.file.mimetype.split('/')[0], // 'image', 'video', etc.
                 fileName: req.file.originalname,
                 fileSize: req.file.size
             };
-            console.log('File saved to disk:', fileUrl);
+            console.log('File uploaded to Cloudinary:', req.file.path);
         }
 
         if (!content && !req.file) {
