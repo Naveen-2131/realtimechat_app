@@ -137,16 +137,49 @@ const getAnalytics = async (req, res) => {
         const totalGroups = await Group.countDocuments({});
         const totalMessages = await Message.countDocuments({});
 
-        // Simple analytics for now
+        // Message volume trends (last 7 days)
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        const messageTrends = await Message.aggregate([
+            { $match: { createdAt: { $gte: sevenDaysAgo } } },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]);
+
+        // Simple analytics
         res.json({
             totalUsers,
             activeUsers,
             totalGroups,
-            totalMessages
+            totalMessages,
+            messageTrends
         });
     } catch (error) {
         res.status(400);
         throw new Error(error.message);
+    }
+};
+
+// @desc    Delete a message (Admin Moderation)
+// @route   DELETE /api/admin/messages/:id
+// @access  Private/Admin
+const deleteMessage = async (req, res) => {
+    try {
+        const message = await Message.findById(req.params.id);
+        if (message) {
+            await message.deleteOne();
+            res.json({ message: 'Message deleted by admin' });
+        } else {
+            res.status(404).json({ message: 'Message not found' });
+        }
+    } catch (error) {
+        res.status(400).json({ message: error.message });
     }
 };
 
@@ -157,5 +190,6 @@ module.exports = {
     deleteGroup,
     getAllReports,
     updateReportStatus,
-    getAnalytics
+    getAnalytics,
+    deleteMessage
 };
