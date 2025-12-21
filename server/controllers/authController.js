@@ -51,7 +51,12 @@ const registerUser = async (req, res) => {
             res.status(400).json({ message: 'Invalid user data' });
         }
     } catch (error) {
-        console.error('Registration error:', error);
+        console.error('Registration error details:', {
+            message: error.message,
+            stack: error.stack,
+            code: error.code,
+            errors: error.errors
+        });
 
         // Handle MongoDB duplicate key error
         if (error.code === 11000) {
