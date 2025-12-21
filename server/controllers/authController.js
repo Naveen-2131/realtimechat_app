@@ -20,11 +20,17 @@ const registerUser = async (req, res) => {
             return res.status(400).json({ message: 'Please add all fields' });
         }
 
-        // Check if user exists
+        // Check if username exists
+        const usernameExists = await User.findOne({ username });
+        if (usernameExists) {
+            return res.status(400).json({ message: 'Username already taken' });
+        }
+
+        // Check if email exists
         const userExists = await User.findOne({ email });
 
         if (userExists) {
-            return res.status(400).json({ message: 'User already exists' });
+            return res.status(400).json({ message: 'User with this email already exists' });
         }
 
         // Create user
@@ -46,6 +52,15 @@ const registerUser = async (req, res) => {
         }
     } catch (error) {
         console.error('Registration error:', error);
+
+        // Handle MongoDB duplicate key error
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyPattern)[0];
+            return res.status(400).json({
+                message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`
+            });
+        }
+
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
