@@ -4,20 +4,31 @@ module.exports = (io) => {
     const users = new Map(); // Map user ID to socket ID
 
     io.on('connection', (socket) => {
-        console.log('User connected:', socket.id);
-
+        console.log('[SOCKET] User connected:', socket.id);
+        console.log('[SOCKET] Transport:', socket.conn.transport.name);
+        console.log('[SOCKET] Total connections:', io.engine.clientsCount);
 
 
         // Join a conversation room
         socket.on('join_conversation', (conversationId) => {
-            socket.join(conversationId);
-            console.log(`[JOIN] Socket ${socket.id} joined room: ${conversationId}`);
-            console.log(`[JOIN] Room ${conversationId} now has ${io.sockets.adapter.rooms.get(conversationId)?.size || 0} members`);
+            const room = String(conversationId);
+            socket.join(room);
+            console.log(`[JOIN] Socket ${socket.id} joined room: ${room}`);
+            console.log(`[JOIN] Room ${room} now has ${io.sockets.adapter.rooms.get(room)?.size || 0} members`);
         });
 
         // Leave a conversation room
         socket.on('leave_conversation', (conversationId) => {
-            socket.leave(conversationId);
+            const room = String(conversationId);
+            socket.leave(room);
+        });
+
+        // Mark messages as read
+        socket.on('mark_read', ({ conversationId, messageId }) => {
+            // We can broadcast this to the other user so they see "Read" status immediately
+            // For now, we just acknowledge it or broadcast to the room
+            const room = String(conversationId);
+            socket.to(room).emit('message_read', { conversationId, messageId, userId: socket.userId });
         });
 
 
@@ -87,9 +98,11 @@ module.exports = (io) => {
                 console.log(`[SERVER] send_message event. Room: ${room}, Sender: ${socket.userId}`);
 
                 if (room) {
+                    const roomStr = String(room);
                     // 1. Emit to the conversation/group room (standard behavior)
-                    io.to(room).emit('new_message', message);
-                    console.log(`[SERVER] Emitted to room ${room}`);
+                    console.log(`[SERVER] Emitting to room ${roomStr}. Participants count: ${io.sockets.adapter.rooms.get(roomStr)?.size || 0}`);
+                    io.to(roomStr).emit('new_message', message);
+                    console.log(`[SERVER] Emitted to room ${roomStr}`);
 
                     // 2. ALSO Emit to specific participants (Reliability layer)
                     // CRITICAL FIX: If participants are missing (e.g. not populated), FETCH them.
@@ -119,13 +132,14 @@ module.exports = (io) => {
 
                     if (participants && participants.length > 0) {
                         participants.forEach(p => {
+                            // p might be an object (populated) or just an ID
                             const pId = p._id || p;
-                            const pIdStr = pId.toString();
+                            const pIdStr = String(pId);
 
                             // Send to everyone via their personal room
                             io.to(pIdStr).emit('new_message', message);
                         });
-                        console.log(`[SERVER] Reliability broadcast sent to ${participants.length} users`);
+                        console.log(`[SERVER] Reliability broadcast sent to ${participants.length} users via personal rooms`);
                     }
                 } else {
                     console.error('No room found for message:', message);
